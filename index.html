@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catan Board Generator</title>
+<style>
+  :root {
+    --bg: #f4efe6;
+    --card: #fffdf8;
+    --ink: #2b2a27;
+    --muted: #6f6a60;
+    --line: #e2d9c8;
+    --accent: #b5532c;
+    --accent-ink: #fff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background: var(--bg);
+    color: var(--ink);
+  }
+  header { padding: 22px 24px 6px; max-width: 1180px; margin: 0 auto; }
+  header h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+  header p { margin: 4px 0 0; color: var(--muted); font-size: 14px; }
+  main {
+    max-width: 1180px; margin: 0 auto; padding: 16px 24px 40px;
+    display: grid; grid-template-columns: 340px 1fr; gap: 24px; align-items: start;
+  }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 14px;
+    padding: 18px;
+  }
+  .opt { padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .opt:first-child { padding-top: 0; }
+  .opt:last-of-type { border-bottom: none; }
+  .opt label.title { display: block; font-size: 14px; font-weight: 600; margin-bottom: 8px; }
+  .opt .hint { font-size: 12px; color: var(--muted); margin-top: 6px; }
+  .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .seg button {
+    border: 0; background: transparent; padding: 7px 18px; font-size: 14px; cursor: pointer;
+    color: var(--muted); font-family: inherit;
+  }
+  .seg button + button { border-left: 1px solid var(--line); }
+  .seg button.on { background: var(--ink); color: #fff; }
+  .range-row { display: flex; align-items: center; gap: 12px; }
+  .range-row input { flex: 1; accent-color: var(--accent); }
+  .range-row output {
+    min-width: 34px; text-align: center; font-weight: 700; font-variant-numeric: tabular-nums;
+    background: var(--bg); border-radius: 6px; padding: 3px 6px;
+  }
+  #generate {
+    width: 100%; margin-top: 14px; padding: 12px; font-size: 16px; font-weight: 600;
+    background: var(--accent); color: var(--accent-ink); border: 0; border-radius: 10px;
+    cursor: pointer; font-family: inherit;
+  }
+  #generate:hover { filter: brightness(1.06); }
+  #generate:disabled { opacity: .6; cursor: progress; }
+  .board-wrap { display: flex; flex-direction: column; gap: 12px; }
+  #board { width: 100%; max-width: 680px; height: auto; display: block; margin: 0 auto; }
+  #msg {
+    font-size: 14px; line-height: 1.45; background: var(--card); border: 1px solid var(--line);
+    border-radius: 10px; padding: 10px 14px; min-height: 44px;
+  }
+  #msg .big { font-weight: 700; }
+  #msg .sub { color: var(--muted); font-size: 12.5px; }
+  #msg.err { border-color: #e3a08a; background: #fdf1ec; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 16px; font-size: 12.5px; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+  footer { text-align: center; font-size: 12px; color: var(--muted); padding-bottom: 24px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Catan Board Generator</h1>
+  <p>Base game for 3–4 players, or the 5–6 player extension. Pick your rules and generate a balanced board.</p>
+</header>
+
+<main>
+  <section class="card" aria-label="Options">
+    <div class="opt">
+      <label class="title">Number of players</label>
+      <div class="seg" id="players"><button data-p="3">3</button><button data-p="4">4</button><button data-p="5">5</button><button data-p="6">6</button></div>
+      <div class="hint" id="playersHint"></div>
+    </div>
+    <div class="opt">
+      <label class="title">Same resource tiles can touch</label>
+      <div class="seg" data-key="sameRes"><button data-v="1">Yes</button><button data-v="0">No</button></div>
+    </div>
+    <div class="opt">
+      <label class="title">Same numbers can touch</label>
+      <div class="seg" data-key="sameNum"><button data-v="1">Yes</button><button data-v="0">No</button></div>
+    </div>
+    <div class="opt">
+      <label class="title">2:1 port can touch its own resource</label>
+      <div class="seg" data-key="portTouch"><button data-v="1">Yes</button><button data-v="0">No</button></div>
+      <div class="hint">"Touch" = a tile at either of the port's two settlement spots.</div>
+    </div>
+    <div class="opt">
+      <label class="title">Multiple 6s/8s on the same resource</label>
+      <div class="seg" data-key="multiRed"><button data-v="1">Yes</button><button data-v="0">No</button></div>
+      <div class="hint">With 5–6 players there are six 6s/8s for five resources, so "No" allows at most two per resource.</div>
+    </div>
+    <div class="opt">
+      <label class="title">Max dots per intersection</label>
+      <div class="range-row">
+        <input type="range" id="maxDots" min="9" max="15" step="1" value="12">
+        <output id="maxDotsOut">12</output>
+      </div>
+      <div class="hint">Total pips of the (up to 3) tiles at any settlement spot.</div>
+    </div>
+    <button id="generate">Generate board</button>
+  </section>
+
+  <section class="board-wrap">
+    <div class="card" style="padding:8px">
+      <svg id="board" viewBox="-360 -320 720 640" role="img" aria-label="Catan board"></svg>
+    </div>
+    <div id="msg">Choose your options and hit <b>Generate board</b>.</div>
+    <div class="legend" id="legend"></div>
+  </section>
+</main>
+<footer>Unofficial fan tool. CATAN is a trademark of its respective owners.</footer>
+
+<script>
+"use strict";
+
+/* ---------------- Game data ---------------- */
+const RES = [
+  { key: "wood",   name: "Wood",   color: "#3f7d45", icon: "🌲" },
+  { key: "brick",  name: "Brick",  color: "#c0623a", icon: "🧱" },
+  { key: "sheep",  name: "Sheep",  color: "#9fcf5f", icon: "🐑" },
+  { key: "wheat",  name: "Wheat",  color: "#e9c54b", icon: "🌾" },
+  { key: "ore",    name: "Ore",    color: "#8d939c", icon: "⛰️" },
+  { key: "desert", name: "Desert", color: "#dcc79a", icon: "🏜️" },
+];
+const DESERT = 5;
+const pipsOf = n => (n ? 6 - Math.abs(7 - n) : 0);
+
+// Port types 0..4 = 2:1 of that resource, 5 = generic 3:1
+const GENERIC = 5;
+const TOKEN_VALUES = [2, 3, 4, 5, 6, 8, 9, 10, 11, 12];
+
+/* ---------------- Board layouts ----------------
+   Counts are indexed [wood, brick, sheep, wheat, ore, desert] for tiles,
+   TOKEN_VALUES order for numbers.
+   Ports are fixed at the standard frame positions: [row, col, edge, type], where
+   edge is the hex side the harbor faces and type is a resource index or GENERIC (3:1). */
+const W_ = 0, B_ = 1, S_ = 2, G_ = 3, O_ = 4; // wood, brick, sheep, grain/wheat, ore
+const LAYOUTS = {
+  base: {
+    label: "Base game board",
+    rows: [3, 4, 5, 4, 3],
+    res: [4, 3, 4, 4, 3, 1],
+    tokens: [1, 2, 2, 2, 2, 2, 2, 2, 2, 1],
+    // Clockwise from the top-left: 3:1, wheat, ore, 3:1, wool, 3:1, 3:1, brick, lumber
+    ports: [
+      [0, 0, "NW", GENERIC], [0, 1, "NE", G_], [1, 3, "NE", O_],
+      [2, 4, "E", GENERIC],  [3, 3, "SE", S_], [4, 1, "SE", GENERIC],
+      [4, 0, "SW", GENERIC], [3, 0, "W", B_],  [1, 0, "W", W_],
+    ],
+  },
+  ext: {
+    label: "5–6 player extension board",
+    rows: [3, 4, 5, 6, 5, 4, 3],
+    res: [6, 5, 6, 6, 5, 2],
+    tokens: [2, 3, 3, 3, 3, 3, 3, 3, 3, 2],
+    // Base frame harbors keep their places; the extension frame adds a wool 2:1
+    // (lower-right side) and a 3:1 (lower-left side). The other two inserts are plain sea.
+    ports: [
+      [0, 0, "NW", GENERIC], [0, 1, "NE", G_], [1, 3, "NE", O_],
+      [3, 5, "E", GENERIC],  [4, 4, "E", S_],  [5, 3, "SE", S_],
+      [6, 1, "SE", GENERIC], [6, 0, "SW", GENERIC], [5, 0, "W", B_],
+      [4, 0, "W", GENERIC],  [1, 0, "W", W_],
+    ],
+  },
+};
+
+/* ---------------- Geometry ---------------- */
+const SIZE = 54;
+const SQ3 = Math.sqrt(3);
+// Active layout (set by useLayout)
+let RES_COUNT, TOKEN_COUNT, HEXES, NH, ND, VERTS, hexVerts, vertHexes, nbrs,
+    PORTS, NP, PORT_BAN, LEVELS, RED_CAP, DESERT_SETS, TOTAL_BOARDS, FRAME_OUT, FRAME_IN, VIEWBOX, LAYOUT_LABEL;
+
+function fact(n) { let f = 1; for (let i = 2; i <= n; i++) f *= i; return f; }
+function multinomial(counts) {
+  let r = fact(counts.reduce((a, b) => a + b, 0));
+  for (const c of counts) r /= fact(c);
+  return r;
+}
+
+// Offset a convex polygon outward by d (points in clockwise screen order)
+function offsetPolygon(pts, d) {
+  const n = pts.length, lines = [];
+  for (let i = 0; i < n; i++) {
+    const [x1, y1] = pts[i], [x2, y2] = pts[(i + 1) % n];
+    const len = Math.hypot(x2 - x1, y2 - y1), nx = (y2 - y1) / len, ny = -(x2 - x1) / len;
+    lines.push([x1 + nx * d, y1 + ny * d, x2 + nx * d, y2 + ny * d]);
+  }
+  return lines.map((l, i) => {
+    const m = lines[(i + n - 1) % n];
+    const [x1, y1, x2, y2] = m, [x3, y3, x4, y4] = l;
+    const den = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4);
+    const t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / den;
+    return [x1 + t * (x2 - x1), y1 + t * (y2 - y1)];
+  });
+}
+
+function useLayout(cfg) {
+  LAYOUT_LABEL = cfg.label;
+  RES_COUNT = cfg.res; TOKEN_COUNT = cfg.tokens;
+  ND = cfg.res[DESERT];
+
+  HEXES = [];
+  const nr = cfg.rows.length;
+  cfg.rows.forEach((len, i) => {
+    for (let k = 0; k < len; k++)
+      HEXES.push({ row: i, col: k, x: (k - (len - 1) / 2) * SQ3 * SIZE, y: (i - (nr - 1) / 2) * 1.5 * SIZE });
+  });
+  NH = HEXES.length;
+
+  const vertMap = new Map();
+  VERTS = [];
+  hexVerts = HEXES.map(h => {
+    const ids = [];
+    for (let i = 0; i < 6; i++) {
+      const a = Math.PI / 180 * (60 * i - 30);
+      const x = h.x + SIZE * Math.cos(a), y = h.y + SIZE * Math.sin(a);
+      const k = Math.round(x) + "," + Math.round(y);
+      if (!vertMap.has(k)) { vertMap.set(k, VERTS.length); VERTS.push({ x, y, hexes: [] }); }
+      ids.push(vertMap.get(k));
+    }
+    return ids;
+  });
+  hexVerts.forEach((vs, h) => vs.forEach(v => VERTS[v].hexes.push(h)));
+  vertHexes = VERTS.map(v => v.hexes);
+
+  nbrs = HEXES.map((h, i) => HEXES
+    .map((o, j) => (j !== i && Math.hypot(o.x - h.x, o.y - h.y) < SQ3 * SIZE * 1.1 ? j : -1))
+    .filter(j => j >= 0));
+
+  // Fixed harbors at the standard frame positions
+  const EDGE_DIR = { E: 0, SE: 1, SW: 2, W: 3, NW: 4, NE: 5 };
+  PORTS = cfg.ports.map(([row, col, dir, type]) => {
+    const h = HEXES.findIndex(o => o.row === row && o.col === col);
+    const d = EDGE_DIR[dir], a = hexVerts[h][d], b = hexVerts[h][(d + 1) % 6];
+    return {
+      h, a, b, type,
+      mx: (VERTS[a].x + VERTS[b].x) / 2, my: (VERTS[a].y + VERTS[b].y) / 2,
+      touch: [...new Set([...vertHexes[a], ...vertHexes[b]])],
+    };
+  });
+  // Resources each hex may not take when 2:1 ports must not touch their own resource
+  PORT_BAN = HEXES.map(() => []);
+  for (const p of PORTS) if (p.type !== GENERIC) for (const h of p.touch) PORT_BAN[h].push(p.type);
+  NP = PORTS.length;
+
+  // "No multiple 6s/8s per resource" = spread red numbers as evenly as possible:
+  // 4 reds over 5 resources -> max 1 each; the extension's 6 reds -> max 2 each.
+  RED_CAP = Math.ceil((cfg.tokens[TOKEN_VALUES.indexOf(6)] + cfg.tokens[TOKEN_VALUES.indexOf(8)]) / 5);
+  // Every possible set of desert hexes (chosen as one decision to keep estimates stable)
+  DESERT_SETS = [];
+  const pick = (start, acc) => {
+    if (acc.length === ND) { DESERT_SETS.push(acc.slice()); return; }
+    for (let h = start; h < NH; h++) { acc.push(h); pick(h + 1, acc); acc.pop(); }
+  };
+  pick(0, []);
+  LEVELS = 1 + 2 * (NH - ND); // desert set + tokens + resources (ports are fixed)
+  TOTAL_BOARDS = multinomial(cfg.res) * multinomial(cfg.tokens);
+
+  // Sea frame: the board's outline (pointed hex tips) pushed outward
+  const ys = VERTS.map(v => v.y), top = Math.min(...ys);
+  const topW = Math.max(...VERTS.filter(v => v.y < top + SIZE).map(v => Math.abs(v.x)));
+  const midW = Math.max(...VERTS.map(v => Math.abs(v.x)));
+  const outline = [[-topW, top], [topW, top], [midW, 0], [topW, -top], [-topW, -top], [-midW, 0]];
+  FRAME_OUT = offsetPolygon(outline, SIZE * 1.55);
+  FRAME_IN = offsetPolygon(outline, SIZE * 0.55);
+  const fx = FRAME_OUT.map(p => p[0]), fy = FRAME_OUT.map(p => p[1]);
+  const pad = 8;
+  VIEWBOX = [Math.min(...fx) - pad, Math.min(...fy) - pad,
+             Math.max(...fx) - Math.min(...fx) + 2 * pad, Math.max(...fy) - Math.min(...fy) + 2 * pad];
+}
+const layoutFor = players => (players >= 5 ? LAYOUTS.ext : LAYOUTS.base);
+useLayout(LAYOUTS.base);
+
+/* ---------------- Constraint solver ----------------
+   Search order: desert hex(es) -> number tokens -> resources. Ports never move.
+   Within the token and resource phases, the most-constrained hex is filled next.
+   Values are branched over as *distinct* values, so every distinct board appears
+   exactly once as a leaf of the search tree. That lets the same tree drive both
+   random generation (backtracking) and counting (Knuth's random-probe estimator). */
+function makeSolver(opts) {
+  const res = new Int8Array(NH), tok = new Int8Array(NH);
+  const vsum = new Int8Array(VERTS.length); // pips currently on each intersection
+  const resLeft = new Int8Array(6), tokLeft = new Int8Array(10);
+
+  function reset() {
+    res.fill(-1); tok.fill(0); vsum.fill(0);
+    resLeft.set(RES_COUNT); tokLeft.set(TOKEN_COUNT);
+  }
+  function setTok(h, t, sign) {
+    tok[h] = sign > 0 ? t : 0;
+    const p = pipsOf(t) * sign;
+    for (const v of hexVerts[h]) vsum[v] += p;
+  }
+  // Max pips a token on hex h may have without breaking the dot limit
+  function room(h) {
+    let r = opts.maxDots;
+    for (const v of hexVerts[h]) r = Math.min(r, opts.maxDots - vsum[v]);
+    return r;
+  }
+  function okTok(h, t, r) {
+    if (pipsOf(t) > r) return false;
+    if (!opts.sameNum) for (const n of nbrs[h]) if (tok[n] === t) return false;
+    return true;
+  }
+  function okRes(h, v) {
+    if (!opts.portTouch && PORT_BAN[h].includes(v)) return false;
+    if (!opts.sameRes) for (const n of nbrs[h]) if (res[n] === v) return false;
+    if (!opts.multiRed && (tok[h] === 6 || tok[h] === 8)) {
+      let reds = 0;
+      for (let k = 0; k < NH; k++)
+        if (k !== h && res[k] === v && (tok[k] === 6 || tok[k] === 8)) reds++;
+      if (reds >= RED_CAP) return false;
+    }
+    return true;
+  }
+
+
+  // Returns the next decision: { kind, v (variable), cands (distinct valid values) }
+  function next(level) {
+    if (level === 0) return { kind: 0, v: -1, cands: DESERT_SETS }; // which hexes are desert
+    if (level < 1 + NH - ND) { // tokens: most-constrained empty hex
+      let best = null;
+      for (let h = 0; h < NH; h++) {
+        if (res[h] === DESERT || tok[h] !== 0) continue;
+        const c = [], r = room(h);
+        for (let i = 0; i < 10; i++) if (tokLeft[i] > 0 && okTok(h, TOKEN_VALUES[i], r)) c.push(i);
+        if (!best || c.length < best.cands.length) best = { kind: 1, v: h, cands: c };
+        if (c.length === 0) break;
+      }
+      return best;
+    }
+    { // resources: most-constrained empty hex
+      let best = null;
+      for (let h = 0; h < NH; h++) {
+        if (res[h] !== -1) continue;
+        const c = [];
+        for (let v = 0; v < 5; v++) if (resLeft[v] > 0 && okRes(h, v)) c.push(v);
+        if (!best || c.length < best.cands.length) best = { kind: 2, v: h, cands: c };
+        if (c.length === 0) break;
+      }
+      return best;
+    }
+  }
+  function apply(d, c) {
+    if (d.kind === 0) { for (const h of c) res[h] = DESERT; resLeft[DESERT] = 0; }
+    else if (d.kind === 1) { setTok(d.v, TOKEN_VALUES[c], 1); tokLeft[c]--; }
+    else if (d.kind === 2) { res[d.v] = c; resLeft[c]--; }
+    
+  }
+  function undo(d, c) {
+    if (d.kind === 0) { for (const h of c) res[h] = -1; resLeft[DESERT] = ND; }
+    else if (d.kind === 1) { setTok(d.v, TOKEN_VALUES[c], -1); tokLeft[c]++; }
+    else if (d.kind === 2) { res[d.v] = -1; resLeft[c]++; }
+    
+  }
+
+  // Random order, weighted by how many copies of each value remain
+  function randomOrder(d) {
+    const left = d.kind === 1 ? tokLeft : d.kind === 2 ? resLeft : null;
+    return d.cands
+      .map(c => ({ c, w: -Math.log(Math.random()) / (left ? left[c] : 1) }))
+      .sort((a, b) => a.w - b.w).map(o => o.c);
+  }
+
+  // Number layout (incl. desert spot) by simulated annealing: swap tokens until
+  // no intersection exceeds the dot limit and (optionally) no equal numbers touch.
+  const BAG = new Array(ND).fill(0);
+  TOKEN_VALUES.forEach((t, i) => { for (let k = 0; k < TOKEN_COUNT[i]; k++) BAG.push(t); });
+  function layoutCost(a) {
+    let c = 0;
+    for (let v = 0; v < VERTS.length; v++) {
+      let s = 0;
+      for (const h of vertHexes[v]) s += pipsOf(a[h]);
+      if (s > opts.maxDots) c += s - opts.maxDots;
+    }
+    if (!opts.sameNum)
+      for (let h = 0; h < NH; h++) for (const n of nbrs[h]) if (n > h && a[h] && a[h] === a[n]) c += 2;
+    return c;
+  }
+  function annealNumbers(maxIter = 200000) {
+    const a = BAG.slice();
+    for (let i = a.length - 1; i > 0; i--) { const j = (Math.random() * (i + 1)) | 0; [a[i], a[j]] = [a[j], a[i]]; }
+    let c = layoutCost(a), T = 2;
+    for (let it = 0; it < maxIter && c > 0; it++) {
+      const i = (Math.random() * NH) | 0, j = (Math.random() * NH) | 0;
+      if (a[i] === a[j]) continue;
+      [a[i], a[j]] = [a[j], a[i]];
+      const c2 = layoutCost(a);
+      if (c2 <= c || Math.random() < Math.exp((c - c2) / T)) c = c2;
+      else [a[i], a[j]] = [a[j], a[i]];
+      T = Math.max(0.05, T * 0.9999);
+    }
+    return c === 0 ? a : null;
+  }
+
+  // Numbers by annealing, then resources and ports by randomized backtracking.
+  function generate(maxRestarts = 200, budget = 5000) {
+    for (let attempt = 0; attempt < maxRestarts; attempt++) {
+      const layout = annealNumbers();
+      if (!layout) continue;
+      reset();
+      layout.forEach((t, h) => {
+        if (t === 0) { res[h] = DESERT; resLeft[DESERT]--; }
+        else { setTok(h, t, 1); tokLeft[TOKEN_VALUES.indexOf(t)]--; }
+      });
+      let nodes = 0;
+      const dfs = level => {
+        if (level === LEVELS) return true;
+        if (++nodes > budget) return false;
+        const d = next(level);
+        for (const c of randomOrder(d)) {
+          apply(d, c);
+          if (dfs(level + 1)) return true;
+          undo(d, c);
+          if (nodes > budget) return false;
+        }
+        return false;
+      };
+      if (dfs(1 + NH - ND)) return { res: Array.from(res), tok: Array.from(tok) };
+    }
+    return null;
+  }
+
+  // Knuth-style estimator: random path through the search tree, weighted by
+  // 1 / (probability of that path). Its average over many probes is an unbiased
+  // estimate of the number of valid boards (exact when no rule is active).
+  function probe() {
+    reset();
+    let est = 1;
+    for (let level = 0; level < LEVELS; level++) {
+      const d = next(level);
+      if (d.cands.length === 0) return 0;
+      // Pick in proportion to copies remaining (as drawing tiles from a bag would),
+      // and weight by 1/probability so the average stays an unbiased count.
+      const left = d.kind === 1 ? tokLeft : d.kind === 2 ? resLeft : null;
+      let c;
+      if (!left) { c = d.cands[(Math.random() * d.cands.length) | 0]; est *= d.cands.length; }
+      else {
+        let total = 0;
+        for (const k of d.cands) total += left[k];
+        let r = Math.random() * total;
+        c = d.cands[d.cands.length - 1];
+        for (const k of d.cands) { r -= left[k]; if (r < 0) { c = k; break; } }
+        est *= total / left[c];
+      }
+      apply(d, c);
+    }
+    return est;
+  }
+
+  return { generate, probe };
+}
+
+/* ---------------- Counting helpers ---------------- */
+
+function estimateCount(opts, { probes = 30000, timeMs = 900, onDone }) {
+  const solver = makeSolver(opts);
+  let sum = 0, sumSq = 0, n = 0, hits = 0;
+  const start = performance.now();
+  const step = () => {
+    const t0 = performance.now();
+    while (performance.now() - t0 < 30 && n < probes) {
+      const e = solver.probe();
+      sum += e; sumSq += e * e; n++; if (e > 0) hits++;
+    }
+    const elapsed = performance.now() - start;
+    const needMore = (n < probes && elapsed < timeMs) || (hits < 30 && elapsed < timeMs * 4);
+    if (needMore) setTimeout(step, 0);
+    else {
+      const mean = sum / n;
+      const se = n > 1 ? Math.sqrt(Math.max(0, sumSq / n - mean * mean) / (n - 1)) : 0;
+      onDone({ mean, se, n, hits });
+    }
+  };
+  step();
+}
+
+/* ---------------- Formatting ---------------- */
+const SUP = { "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹", "-": "⁻" };
+function sci(x) {
+  if (x < 1e6) return Math.round(x).toLocaleString();
+  const e = Math.floor(Math.log10(x));
+  const m = x / 10 ** e;
+  return m.toFixed(2) + " × 10" + String(e).split("").map(c => SUP[c]).join("");
+}
+function words(x) {
+  if (x >= 1e33) return "";
+  const names = [[1e30, "nonillion"], [1e27, "octillion"], [1e24, "septillion"], [1e21, "sextillion"], [1e18, "quintillion"],
+                 [1e15, "quadrillion"], [1e12, "trillion"], [1e9, "billion"], [1e6, "million"]];
+  for (const [v, w] of names) if (x >= v) return "about " + (x / v).toFixed(x / v < 10 ? 1 : 0) + " " + w;
+  return "";
+}
+
+/* ---------------- Rendering ---------------- */
+const NS = "http://www.w3.org/2000/svg";
+function el(tag, attrs, parent, text) {
+  const e = document.createElementNS(NS, tag);
+  for (const k in attrs) e.setAttribute(k, attrs[k]);
+  if (text != null) e.textContent = text;
+  if (parent) parent.appendChild(e);
+  return e;
+}
+function hexPoints(cx, cy, r, offsetDeg) {
+  const pts = [];
+  for (let i = 0; i < 6; i++) {
+    const a = Math.PI / 180 * (60 * i + offsetDeg);
+    pts.push((cx + r * Math.cos(a)).toFixed(1) + "," + (cy + r * Math.sin(a)).toFixed(1));
+  }
+  return pts.join(" ");
+}
+
+function render(board) {
+  const svg = document.getElementById("board");
+  svg.innerHTML = "";
+  // Sea frame
+  svg.setAttribute("viewBox", VIEWBOX.map(n => n.toFixed(0)).join(" "));
+  const pts = poly => poly.map(p => p[0].toFixed(1) + "," + p[1].toFixed(1)).join(" ");
+  el("polygon", { points: pts(FRAME_OUT), fill: "#2c6e91", stroke: "#1f5470", "stroke-width": 6, "stroke-linejoin": "round" }, svg);
+  el("polygon", { points: pts(FRAME_IN), fill: "#3b84a8", opacity: 0.55, "stroke-linejoin": "round" }, svg);
+  let robberPlaced = false;
+
+  // Ports
+  PORTS.forEach((p, i) => {
+    const h = HEXES[p.h];
+    let dx = p.mx - h.x, dy = p.my - h.y; const d = Math.hypot(dx, dy); dx /= d; dy /= d;
+    const px = p.mx + dx * SIZE * 0.78, py = p.my + dy * SIZE * 0.78;
+    for (const v of [p.a, p.b])
+      el("line", { x1: px, y1: py, x2: VERTS[v].x, y2: VERTS[v].y, stroke: "#8a6a43", "stroke-width": 5, "stroke-linecap": "round" }, svg);
+    const t = p.type;
+    const generic = t === GENERIC;
+    el("circle", { cx: px, cy: py, r: SIZE * 0.4, fill: generic ? "#fffdf8" : RES[t].color, stroke: "#5b4a33", "stroke-width": 2 }, svg);
+    el("text", { x: px, y: py + (generic ? 5 : -3), "text-anchor": "middle", "font-size": generic ? 14 : 13, "font-weight": 700, fill: "#2b2a27" }, svg, generic ? "3:1" : "2:1");
+    if (!generic) el("text", { x: px, y: py + 13, "text-anchor": "middle", "font-size": 12 }, svg, RES[t].icon);
+  });
+
+  // Tiles
+  HEXES.forEach((h, i) => {
+    const r = board.res[i];
+    el("polygon", { points: hexPoints(h.x, h.y, SIZE * 0.97, -30), fill: RES[r].color, stroke: "#f3e7c9", "stroke-width": 3, "stroke-linejoin": "round" }, svg);
+    el("text", { x: h.x, y: h.y - SIZE * 0.45, "text-anchor": "middle", "font-size": 18, opacity: 0.9 }, svg, RES[r].icon);
+    const t = board.tok[i];
+    if (t) {
+      const red = t === 6 || t === 8;
+      el("circle", { cx: h.x, cy: h.y + 6, r: SIZE * 0.38, fill: "#fbf3df", stroke: "#b9a983", "stroke-width": 1.5 }, svg);
+      el("text", { x: h.x, y: h.y + 11, "text-anchor": "middle", "font-size": red ? 21 : 19, "font-weight": 800, fill: red ? "#c0262d" : "#2b2a27" }, svg, t);
+      const n = pipsOf(t);
+      for (let k = 0; k < n; k++)
+        el("circle", { cx: h.x + (k - (n - 1) / 2) * 5, cy: h.y + 19, r: 1.8, fill: red ? "#c0262d" : "#2b2a27" }, svg);
+    } else {
+      el("text", { x: h.x, y: h.y + 14, "text-anchor": "middle", "font-size": 12, fill: "#6b5a3a", "font-weight": 600 }, svg, robberPlaced ? "Desert" : "Robber");
+      robberPlaced = true;
+    }
+  });
+}
+
+function boardMaxDots(board) {
+  let m = 0;
+  VERTS.forEach((v, i) => {
+    let s = 0; for (const h of vertHexes[i]) s += pipsOf(board.tok[h]);
+    if (s > m) m = s;
+  });
+  return m;
+}
+
+/* ---------------- UI ---------------- */
+if (typeof document !== "undefined") {
+  const state = { players: 4, sameRes: false, sameNum: false, portTouch: true, multiRed: false, maxDots: 12 };
+
+  const playersSeg = document.getElementById("players"), playersHint = document.getElementById("playersHint");
+  const syncPlayers = () => {
+    playersSeg.querySelectorAll("button").forEach(b => b.classList.toggle("on", +b.dataset.p === state.players));
+    playersHint.textContent = state.players >= 5
+      ? "Uses the 5–6 player extension: 30 tiles, 2 deserts, 11 ports in their standard spots."
+      : "Uses the base game: 19 tiles, 1 desert, 9 ports in their standard spots.";
+  };
+  playersSeg.addEventListener("click", e => {
+    const b = e.target.closest("button"); if (!b) return;
+    state.players = +b.dataset.p; syncPlayers();
+  });
+  syncPlayers();
+
+  document.querySelectorAll(".seg[data-key]").forEach(seg => {
+    const key = seg.dataset.key;
+    const sync = () => seg.querySelectorAll("button").forEach(b => b.classList.toggle("on", (b.dataset.v === "1") === state[key]));
+    seg.addEventListener("click", e => {
+      const b = e.target.closest("button"); if (!b) return;
+      state[key] = b.dataset.v === "1"; sync();
+    });
+    sync();
+  });
+  const range = document.getElementById("maxDots"), out = document.getElementById("maxDotsOut");
+  range.addEventListener("input", () => { state.maxDots = +range.value; out.textContent = range.value; });
+
+  const legend = document.getElementById("legend");
+  RES.forEach(r => {
+    const s = document.createElement("span");
+    s.innerHTML = `<i style="background:${r.color}"></i>${r.icon} ${r.name}`;
+    legend.appendChild(s);
+  });
+
+  const msg = document.getElementById("msg");
+  const btn = document.getElementById("generate");
+
+  function run() {
+    const opts = { ...state };
+    useLayout(layoutFor(opts.players));
+    btn.disabled = true;
+    msg.className = "";
+    msg.innerHTML = "Generating…";
+    setTimeout(() => {
+      const board = makeSolver(opts).generate();
+      if (!board) {
+        msg.className = "err";
+        msg.innerHTML = `<span class="big">Couldn't find a board with these options.</span> ` +
+          `<span class="sub">Try raising the max dots per intersection or allowing same numbers / resources to touch.</span>`;
+        btn.disabled = false;
+        return;
+      }
+      render(board);
+      const maxSeen = boardMaxDots(board);
+      msg.innerHTML = `<span class="sub">Counting possible boards for these options…</span>`;
+      estimateCount(opts, {
+        onDone: ({ mean, se, n, hits }) => {
+          btn.disabled = false;
+          const frac = mean / TOTAL_BOARDS;
+          const share = frac >= 0.01 ? `${Math.round(frac * 100)}%` : `about 1 in ${sci(1 / frac)}`;
+          let line;
+          if (mean > 0) {
+            const w = words(mean);
+            const rel = se / mean;
+            const precision = rel < 0.05 ? "" : rel < 0.25 ? " (rough estimate)" : " (very rough — these options are rare)";
+            line = `<span class="big">≈ ${sci(mean)} possible boards</span>${w ? ` — ${w}` : ""} match these options${precision}.`;
+            line += `<br><span class="sub">That's ${share} of all ${sci(TOTAL_BOARDS)} possible tile and number layouts of the ${LAYOUT_LABEL.toLowerCase()}. ` +
+              `Estimated from ${n.toLocaleString()} random samples. This board's busiest intersection: ${maxSeen} dots.</span>`;
+          } else {
+            line = `<span class="big">These options are extremely rare</span> — too few valid boards to estimate from ${n.toLocaleString()} samples.` +
+              `<br><span class="sub">This board's busiest intersection: ${maxSeen} dots.</span>`;
+          }
+          msg.innerHTML = line;
+        }
+      });
+    }, 20);
+  }
+  btn.addEventListener("click", run);
+  run();
+}
+</script>
+</body>
+</html>

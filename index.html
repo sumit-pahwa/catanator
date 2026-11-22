@@ -115,8 +115,8 @@
     <div class="opt">
       <label class="title">Max dots per intersection</label>
       <div class="range-row">
-        <input type="range" id="maxDots" min="9" max="15" step="1" value="9">
-        <output id="maxDotsOut">9</output>
+        <input type="range" id="maxDots" min="9" max="15" step="1" value="10">
+        <output id="maxDotsOut">10</output>
       </div>
       <div class="hint">Total pips of the (up to 3) tiles at any settlement spot.</div>
     </div>
@@ -633,7 +633,7 @@ function boardMaxDots(board) {
 
 /* ---------------- UI ---------------- */
 if (typeof document !== "undefined") {
-  const state = { players: 4, sameRes: false, sameNum: false, portTouch: false, multiRed: false, maxDots: 9 };
+  const state = { players: 4, sameRes: false, sameNum: false, portTouch: false, multiRed: false, maxDots: 10 };
 
   const playersSeg = document.getElementById("players"), playersHint = document.getElementById("playersHint");
   const syncPlayers = () => {
